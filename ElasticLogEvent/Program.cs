@@ -1,4 +1,6 @@
 ﻿using Confluent.Kafka;
+using ElasticLogEvent;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -17,85 +19,42 @@ class Program
     public static async Task Main(string[] args)
     {
         using IHost host = Host.CreateDefaultBuilder(args)
-            .ConfigureLogging(logging =>
+            .ConfigureAppConfiguration((context, config) =>
+            {
+                config.SetBasePath(Directory.GetCurrentDirectory())
+                      .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                      .AddJsonFile($"appsettings.{context.HostingEnvironment.EnvironmentName}.json", optional: true, reloadOnChange: true)
+                      .AddEnvironmentVariables();
+            })
+            .ConfigureLogging((context, logging) =>
             {
                 logging.ClearProviders();
                 logging.AddConsole();
+                logging.AddConfiguration(context.Configuration.GetSection("Logging"));
             })
-            .ConfigureServices((_, services) =>
+            .ConfigureServices((context, services) =>
             {
+                // Configure Kafka producer with settings from appsettings
+                var kafkaConfig = context.Configuration.GetSection("Kafka").Get<KafkaConfig>();
+                services.Configure<KafkaConfig>(context.Configuration.GetSection("Kafka"));
+                
+                services.AddSingleton<IProducer<Null, string>>(provider =>
+                {
+                    var config = new ProducerConfig
+                    {
+                        BootstrapServers = kafkaConfig?.BootstrapServers ?? "localhost:9092",
+                        ClientId = kafkaConfig?.ClientId ?? "ElasticLogEvent"
+                    };
+                    
+                    return new ProducerBuilder<Null, string>(config).Build();
+                });
+
+                // Register the Worker service
                 services.AddHostedService<Worker>();
             })
             .Build();
 
+        // Run the host
         await host.RunAsync();
-    }
-}
-
-/// <summary>
-/// A background service that generates and sends log events to Kafka.
-/// </summary>
-public class Worker : BackgroundService
-{
-    /// <summary>
-    /// Logger instance for logging information.
-    /// </summary>
-    private readonly ILogger<Worker> _logger;
-
-    /// <summary>
-    /// Kafka producer for sending messages.
-    /// </summary>
-    private readonly IProducer<Null, string> _producer;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="Worker"/> class.
-    /// </summary>
-    /// <param name="logger">The logger instance.</param>
-    public Worker(ILogger<Worker> logger)
-    {
-        _logger = logger;
-
-        var config = new ProducerConfig
-        {
-            BootstrapServers = "localhost:9092"
-        };
-
-        _producer = new ProducerBuilder<Null, string>(config).Build();
-    }
-
-    /// <summary>
-    /// Executes the background service.
-    /// </summary>
-    /// <param name="stoppingToken">A token to monitor for cancellation requests.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        int counter = 0;
-
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            var logEvent = new
-            {
-                EventType = "JobExecution",
-                Service = "KafkaLoggingApp",
-                MessageNumber = ++counter,
-                DurationSeconds = Math.Round(Random.Shared.NextDouble() * 10, 2),
-                Timestamp = DateTime.UtcNow
-            };
-
-            var json = JsonSerializer.Serialize(logEvent);
-
-            // Send to Kafka
-            await _producer.ProduceAsync(
-                "app-logs",
-                new Message<Null, string> { Value = json },
-                stoppingToken
-            );
-
-            // Also log to console
-            _logger.LogInformation("Published log: {json}", json);
-
-            await Task.Delay(5000, stoppingToken);
-        }
     }
 }
