@@ -1,4 +1,4 @@
-# 📘 End-to-End Logging with .NET, Kafka (KRaft), and ELK (Elasticsearch, Logstash, Kibana)
+<img width="148" height="23" alt="image" src="https://github.com/user-attachments/assets/bb2d138a-6520-4c98-8295-abb49942948d" /># 📘 End-to-End Logging with .NET, Kafka (KRaft), and ELK (Elasticsearch, Logstash, Kibana)
 
 ## 1. Introduction
 
@@ -53,6 +53,7 @@ docker logs kafka
 Monitor logs in the topic (in a separate terminal):
 
 ```bash
+docker ps
 docker run --network host -it --rm bashj79/kafka-kraft /bin/bash -c "/opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9093 --topic app-logs"
 ```
 
