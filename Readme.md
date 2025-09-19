@@ -39,6 +39,11 @@ Run Kafka in KRaft mode using Docker (no ZooKeeper required):
 docker run --name kafka -d -p 9093:9092 bashj79/kafka-kraft
 ```
 
+Remove the container named kafka is already present and run the above command
+```bash
+docker rm -f sym-kafka
+```
+
 Check logs to ensure Kafka started successfully:
 
 ```bash
